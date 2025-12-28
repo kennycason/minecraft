@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "antfarm",
+  "version": "${version}",
+  "name": "AntFarm Generator",
+  "description": "Procedurally generate giant ant farms with tunnels!",
+  "authors": ["Kenny"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/antfarm/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      {
+        "adapter": "kotlin",
+        "value": "com.kenny.antfarm.AntFarmMod"
+      }
+    ]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "fabric-language-kotlin": ">=1.12.0",
+    "minecraft": "~1.21"
+  }
+}
+

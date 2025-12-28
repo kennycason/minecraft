@@ -1,0 +1,84 @@
+# =====================================
+# Minecraft Server Runtime Files
+# =====================================
+world/
+logs/
+crash-reports/
+*.log
+server.properties
+banned-ips.json
+banned-players.json
+ops.json
+whitelist.json
+usercache.json
+eula.txt
+versions/
+.fabric/
+
+# =====================================
+# Gradle Build System
+# =====================================
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# =====================================
+# IDE Files
+# =====================================
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# VS Code
+.vscode/
+
+# =====================================
+# OS Generated Files
+# =====================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*~
+
+# =====================================
+# Compiled Mods (rebuild from source)
+# =====================================
+mods/*.jar
+!mods/antfarm/
+
+# =====================================
+# Kotlin/Java
+# =====================================
+*.class
+*.jar
+!gradle/wrapper/*.jar
+*.war
+*.ear
+hs_err_pid*
+
+# =====================================
+# Runtime Data
+# =====================================
+libraries/
+*.lck
+
+# =====================================
+# Screenshots (optional - uncomment to ignore)
+# =====================================
+# screenshot/
+
