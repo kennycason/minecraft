@@ -88,10 +88,49 @@ class AntFarmGenerator(
         createEntrance()
         addSideLadder()
         addCobwebsAndVines()
+        addTorchLighting() // Prevent Endermen spawns!
         addTraps()
         addLootChests()
+        addEarlyGameChests() // Extra chests in upper areas!
         spawnMonsters()
+        reinforceGlassWalls() // Protect glass AFTER all tunneling!
         return tunnelCount
+    }
+    
+    // Extra chests in the upper/easier areas to help get started
+    private fun addEarlyGameChests() {
+        val upperThird = height - (height / 3)
+        val earlyChestCount = (width / 10).coerceIn(5, 15)
+        
+        repeat(earlyChestCount) {
+            for (attempt in 0 until 40) {
+                val x = random.nextInt(5, width - 5)
+                val y = random.nextInt(upperThird, height - 8) // Upper third only
+                val z = random.nextInt(2, depth - 2)
+                
+                val pos = origin.add(x, y, z)
+                val belowPos = origin.add(x, y - 1, z)
+                
+                if (tunnelPositions.contains(pos) && !tunnelPositions.contains(belowPos)) {
+                    // Place chest with early-game loot
+                    world.setBlockState(pos, Blocks.CHEST.defaultState, 3)
+                    val blockEntity = world.getBlockEntity(pos)
+                    if (blockEntity is ChestBlockEntity) {
+                        val items = listOf(
+                            Items.TORCH, Items.BREAD, Items.APPLE, Items.STONE_PICKAXE,
+                            Items.STONE_SWORD, Items.LEATHER_BOOTS, Items.IRON_INGOT, Items.COAL
+                        )
+                        val itemCount = random.nextInt(2, 5)
+                        repeat(itemCount) { i ->
+                            val item = items[random.nextInt(items.size)]
+                            val count = if (item == Items.TORCH) random.nextInt(4, 12) else random.nextInt(1, 4)
+                            blockEntity.setStack(i, ItemStack(item, count))
+                        }
+                    }
+                    break
+                }
+            }
+        }
     }
     
     private fun <T> getWeightedRandom(items: List<Pair<T, Int>>): T {
@@ -122,15 +161,24 @@ class AntFarmGenerator(
     private fun createGlassWalls() {
         for (x in 1 until width - 1) {
             for (y in 1 until height - 1) {
-                // Use barrier blocks behind glass for unbreakable walls!
                 setBlock(x, y, 0, WALL_BLOCK)
                 setBlock(x, y, depth - 1, WALL_BLOCK)
             }
         }
-        // Add invisible barrier layer to prevent breaking glass
+        // NOTE: Barriers are placed AFTER tunneling in reinforceGlassWalls()
+    }
+    
+    // Called AFTER all tunneling to protect glass from explosions
+    private fun reinforceGlassWalls() {
         for (x in 1 until width - 1) {
             for (y in 1 until height - 1) {
-                // Place barriers just inside the glass
+                // Re-place glass (in case tunnels touched it)
+                val frontGlass = origin.add(x, y, 0)
+                val backGlass = origin.add(x, y, depth - 1)
+                world.setBlockState(frontGlass, WALL_BLOCK.defaultState, 3)
+                world.setBlockState(backGlass, WALL_BLOCK.defaultState, 3)
+                
+                // Barrier layer just inside - prevents breaking/explosions
                 val frontBarrier = origin.add(x, y, 1)
                 val backBarrier = origin.add(x, y, depth - 2)
                 world.setBlockState(frontBarrier, Blocks.BARRIER.defaultState, 3)
@@ -208,28 +256,52 @@ class AntFarmGenerator(
                 }
             }
             tunnelEndpoints.add(Triple(ex, height - 12, ez))
+            
+            // STARTER CHEST at each entrance with basic supplies!
+            placeStarterChest(origin.add(entranceX, height - 3, entranceZ))
+        }
+    }
+    
+    private fun placeStarterChest(pos: BlockPos) {
+        world.setBlockState(pos, Blocks.CHEST.defaultState, 3)
+        
+        val blockEntity = world.getBlockEntity(pos)
+        if (blockEntity is ChestBlockEntity) {
+            // Essential starter gear
+            blockEntity.setStack(0, ItemStack(Items.STONE_PICKAXE, 1))
+            blockEntity.setStack(1, ItemStack(Items.STONE_SWORD, 1))
+            blockEntity.setStack(2, ItemStack(Items.TORCH, 16))
+            blockEntity.setStack(3, ItemStack(Items.BREAD, 8))
+            blockEntity.setStack(4, ItemStack(Items.LEATHER_HELMET, 1))
+            blockEntity.setStack(5, ItemStack(Items.LEATHER_BOOTS, 1))
         }
     }
     
     private fun addSideLadder() {
-        val ladderZ = depth / 2
-        for (y in 1 until height - 1) {
-            val pos = origin.add(2, y, ladderZ)
-            world.setBlockState(pos, TUNNEL_BLOCK.defaultState)
-            tunnelPositions.add(pos)
+        // OUTSIDE ladders - to climb UP to the top of the ant farm!
+        // Left side - on the outside of the glass (z = -1 from structure, attached to z=0)
+        for (y in 0 until height + 5) {
+            // Place a block to attach ladder to, then the ladder
+            val attachPos = origin.add(1, y, -1)
+            val ladderPos = origin.add(1, y, 0)
+            world.setBlockState(attachPos, Blocks.STONE_BRICKS.defaultState, 3)
+            // Ladder on the glass side facing outward
         }
-        for (y in 1 until height - 1) {
-            val pos = origin.add(2, y, ladderZ)
-            world.setBlockState(pos, Blocks.LADDER.defaultState.with(Properties.HORIZONTAL_FACING, Direction.EAST))
+        for (y in 0 until height + 5) {
+            val ladderPos = origin.add(0, y, 0)
+            world.setBlockState(ladderPos, Blocks.LADDER.defaultState
+                .with(Properties.HORIZONTAL_FACING, Direction.SOUTH), 3)
         }
-        for (y in 1 until height - 1) {
-            val pos = origin.add(width - 3, y, ladderZ)
-            world.setBlockState(pos, TUNNEL_BLOCK.defaultState)
-            tunnelPositions.add(pos)
+        
+        // Right side
+        for (y in 0 until height + 5) {
+            val attachPos = origin.add(width - 2, y, -1)
+            world.setBlockState(attachPos, Blocks.STONE_BRICKS.defaultState, 3)
         }
-        for (y in 1 until height - 1) {
-            val pos = origin.add(width - 3, y, ladderZ)
-            world.setBlockState(pos, Blocks.LADDER.defaultState.with(Properties.HORIZONTAL_FACING, Direction.WEST))
+        for (y in 0 until height + 5) {
+            val ladderPos = origin.add(width - 1, y, 0)
+            world.setBlockState(ladderPos, Blocks.LADDER.defaultState
+                .with(Properties.HORIZONTAL_FACING, Direction.SOUTH), 3)
         }
     }
     
@@ -245,16 +317,16 @@ class AntFarmGenerator(
             count++
         }
         
-        // 2. MAIN MAZE: Winding tunnels that stay HIDDEN (not touching glass)
-        val mazeStartPoints = (width * height) / 200
-        repeat(mazeStartPoints.coerceIn(8, 25)) {
+        // 2. MAIN MAZE: Winding tunnels - MORE TUNNELING!
+        val mazeStartPoints = (width * height) / 120
+        repeat(mazeStartPoints.coerceIn(15, 40)) {
             carveWindingTunnel(random.nextInt(6, width - 6), random.nextInt(5, height - 10), false)
             count++
         }
         
-        // 3. Deep hidden tunnels (never touch glass)
-        val hiddenTunnelCount = (width * height) / 150
-        repeat(hiddenTunnelCount.coerceIn(10, 35)) {
+        // 3. Deep hidden tunnels - increased density
+        val hiddenTunnelCount = (width * height) / 100
+        repeat(hiddenTunnelCount.coerceIn(15, 50)) {
             carveDeepHiddenTunnel()
             count++
         }
@@ -297,8 +369,8 @@ class AntFarmGenerator(
         count += 10
         
         // 9. LIGHT SHAFTS - 1x1 tunnels to glass for natural light (keeps endermen out!)
-        // More light shafts for better visibility!
-        val lightShaftCount = (width / 4).coerceIn(15, 50)
+        // LOTS of light shafts for maximum light penetration!
+        val lightShaftCount = (width / 3).coerceIn(25, 80)
         repeat(lightShaftCount) {
             carveLightShaft()
         }
@@ -1030,6 +1102,56 @@ class AntFarmGenerator(
                 world.setBlockState(pos, COBWEB.defaultState)
             } else if (random.nextFloat() < 0.01f) {
                 world.setBlockState(pos, VINE.defaultState)
+            }
+        }
+    }
+    
+    // Add torches throughout tunnels to prevent Endermen/hostile mob spawns
+    private fun addTorchLighting() {
+        // Place torches every ~8 blocks in tunnels
+        val torchSpacing = 8
+        var torchCount = 0
+        
+        for (pos in tunnelPositions) {
+            val localX = pos.x - origin.x
+            val localY = pos.y - origin.y
+            val localZ = pos.z - origin.z
+            
+            // Place torch if on grid and there's a wall nearby to attach to
+            if (localX % torchSpacing == 0 && localY % torchSpacing == 0) {
+                // Check if this is floor level (block below is solid)
+                val belowPos = pos.down()
+                if (!tunnelPositions.contains(belowPos)) {
+                    // Place torch on floor
+                    if (random.nextFloat() < 0.7f) { // 70% chance
+                        world.setBlockState(pos, Blocks.TORCH.defaultState, 3)
+                        torchCount++
+                    }
+                }
+            }
+        }
+        
+        // Also embed some glowstone in the dirt for ambient light
+        val glowstoneCount = (width * height) / 200
+        repeat(glowstoneCount.coerceIn(10, 40)) {
+            val x = random.nextInt(3, width - 3)
+            val y = random.nextInt(2, height - 6)
+            val z = random.nextInt(1, depth - 1)
+            
+            val pos = origin.add(x, y, z)
+            // Only place in solid areas (not tunnels)
+            if (!tunnelPositions.contains(pos)) {
+                world.setBlockState(pos, Blocks.SHROOMLIGHT.defaultState, 3) // Warm glow
+            }
+        }
+        
+        // Place lanterns at tunnel intersections for extra light
+        for ((ex, ey, ez) in tunnelEndpoints) {
+            if (random.nextFloat() < 0.4f) {
+                val lanternPos = origin.add(ex, ey + 2, ez)
+                if (tunnelPositions.contains(lanternPos)) {
+                    world.setBlockState(lanternPos, Blocks.LANTERN.defaultState, 3)
+                }
             }
         }
     }
