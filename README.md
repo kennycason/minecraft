@@ -4,6 +4,30 @@ A collection of custom Minecraft Fabric mods for unique gameplay experiences.
 
 ## Mods Included
 
+### Super Metroid Room Generator
+
+Renders Super Metroid rooms as playable Minecraft structures. Each room is built from the original game's tile data — solid tiles become collidable blocks behind a glass viewing wall, with color-matched materials for each area's palette.
+
+#### Commands
+```
+/sm create <room>    # Generate a room (e.g., /sm create crab_maze)
+/sm rooms            # List available rooms
+```
+
+#### Available Rooms
+- `east_cactus_alley_room` — Purple Brinstar
+- `crab_maze` — Green Brinstar
+
+#### Screenshots
+
+<img src="screenshot/sm_east_cactus_alley.png" width="800" alt="Super Metroid - East Cactus Alley (Purple Brinstar)">
+
+<img src="screenshot/sm_crab_maze.png" width="800" alt="Super Metroid - Crab Maze (Green Brinstar)">
+
+<img src="screenshot/sm_crab_maze02.png" width="800" alt="Super Metroid - Crab Maze (Green Brinstar) - Side View">
+
+---
+
 ### 🐜 AntFarm Battle Royale Generator
 
 Procedurally generates giant AntFarm for battle royale with other players.
@@ -49,7 +73,7 @@ The Antfarm includes:
 ## Installation
 
 1. Install Fabric Loader for Minecraft 1.21.x
-2. Copy `mods/antfarm-mod-1.0.0.jar` and `fabric-language-kotlin.jar` to your mods folder
+2. Copy mod jars and `fabric-language-kotlin.jar` to your mods folder
 3. Launch Minecraft with the Fabric profile
 
 ## Building from Source

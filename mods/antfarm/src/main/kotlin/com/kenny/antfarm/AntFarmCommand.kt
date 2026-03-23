@@ -27,8 +27,25 @@ object AntFarmCommand {
                         )
                 )
                 .then(
+                    literal("dig")
+                        .then(
+                            argument("width", IntegerArgumentType.integer(20, 300))
+                                .then(
+                                    argument("depth", IntegerArgumentType.integer(20, 200))
+                                        .then(
+                                            argument("height", IntegerArgumentType.integer(20, 150))
+                                                .executes(::executeDig)
+                                        )
+                                )
+                        )
+                )
+                .then(
                     literal("demo")
                         .executes(::executeDemo)
+                )
+                .then(
+                    literal("digdemo")
+                        .executes(::executeDigDemo)
                 )
         )
     }
@@ -65,6 +82,30 @@ object AntFarmCommand {
         return 1
     }
     
+    private fun executeDig(context: CommandContext<ServerCommandSource>): Int {
+        val source = context.source
+        val player = source.playerOrThrow
+        val world = source.world
+        val pos = player.blockPos
+        
+        val width = IntegerArgumentType.getInteger(context, "width")
+        val depth = IntegerArgumentType.getInteger(context, "depth")
+        val height = IntegerArgumentType.getInteger(context, "height")
+        
+        source.sendFeedback({ 
+            Text.literal("⛏️ Digging underground ant farm ${width}x${depth}x${height} deep...") 
+        }, true)
+        
+        val generator = UndergroundAntFarmGenerator(world, pos, width, depth, height)
+        val tunnelCount = generator.generate()
+        
+        source.sendFeedback({ 
+            Text.literal("✅ Underground ant farm dug with $tunnelCount tunnels and chambers!") 
+        }, true)
+        
+        return 1
+    }
+    
     private fun executeDemo(context: CommandContext<ServerCommandSource>): Int {
         val source = context.source
         val player = source.playerOrThrow
@@ -82,5 +123,22 @@ object AntFarmCommand {
         
         return 1
     }
+    
+    private fun executeDigDemo(context: CommandContext<ServerCommandSource>): Int {
+        val source = context.source
+        val player = source.playerOrThrow
+        val world = source.world
+        val pos = player.blockPos
+        
+        source.sendFeedback({ Text.literal("⛏️ Digging demo underground ant farm (60x60x40 deep)...") }, true)
+        
+        val generator = UndergroundAntFarmGenerator(world, pos, 60, 60, 40)
+        val tunnelCount = generator.generate()
+        
+        source.sendFeedback({ 
+            Text.literal("✅ Demo underground ant farm dug with $tunnelCount tunnels!") 
+        }, true)
+        
+        return 1
+    }
 }
-
