@@ -91,8 +91,8 @@ The compiled jar will be in `build/libs/`.
 # Set Java 21+ via jenv
 jenv local 23
 
-# Start the server
-bash start.sh
+# Start the Fabric server (allocates 2GB RAM)
+java -Xmx2G -jar fabric-server-launch.jar nogui
 ```
 
 ## License
