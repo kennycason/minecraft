@@ -1,6 +1,7 @@
 package com.kenny.supermetroid
 
 import com.mojang.brigadier.CommandDispatcher
+import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
 import com.mojang.brigadier.suggestion.SuggestionsBuilder
@@ -31,6 +32,10 @@ object SuperMetroidCommand {
                             argument("room", StringArgumentType.string())
                                 .suggests { _, builder -> suggestRooms(builder) }
                                 .executes(::executeCreate)
+                                .then(
+                                    argument("glass", BoolArgumentType.bool())
+                                        .executes(::executeCreate)
+                                )
                         )
                 )
                 .then(
@@ -52,6 +57,7 @@ object SuperMetroidCommand {
         val world = source.level
         val pos = player.blockPosition()
         val roomArg = StringArgumentType.getString(context, "room")
+        val showGlass = try { BoolArgumentType.getBool(context, "glass") } catch (_: Exception) { false }
 
         // Check if it's a tile-based room (by room ID)
         if (roomArg.uppercase() in TILE_ROOMS) {
@@ -59,10 +65,10 @@ object SuperMetroidCommand {
             val roomName = TILE_ROOMS[roomId]!!
 
             source.sendSuccess({
-                Component.literal("Generating Super Metroid room: $roomName ($roomId) [tile-based]...")
+                Component.literal("Generating Super Metroid room: $roomName ($roomId) [glass=$showGlass]...")
             }, true)
 
-            val generator = TileRoomGenerator(world, pos, roomId)
+            val generator = TileRoomGenerator(world, pos, roomId, showGlass)
             val result = generator.generate()
 
             source.sendSuccess({

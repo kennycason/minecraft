@@ -10,6 +10,9 @@ object SuperMetroidMod : ModInitializer {
     override fun onInitialize() {
         logger.info("Super Metroid Rooms loading...")
 
+        SmTileBlocks.register()
+        logger.info("Registered 1024 SM tile blocks")
+
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             SuperMetroidCommand.register(dispatcher)
         }
