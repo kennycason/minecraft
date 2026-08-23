@@ -1,0 +1,1 @@
+{"variants": {"hflip=false,vflip=false": {"model": "super_metroid:block/tiles/sm_tile_114"}, "hflip=true,vflip=false": {"model": "super_metroid:block/tiles/sm_tile_114_hflip"}, "hflip=false,vflip=true": {"model": "super_metroid:block/tiles/sm_tile_114_vflip"}, "hflip=true,vflip=true": {"model": "super_metroid:block/tiles/sm_tile_114_hvflip"}}}

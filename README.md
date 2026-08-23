@@ -14,6 +14,18 @@ Renders Super Metroid rooms as playable Minecraft structures. Each room is built
 /sm rooms            # List available rooms
 ```
 
+The same mod jar also includes the 3D maze generator:
+
+```text
+/maze3d <width> <height> <depth>
+/maze3d <width> <height> <depth> <wall_block> [seed]
+/maze3d status
+```
+
+For example, `/maze3d 5 3 5 obsidian 12345` creates a reproducible 5x3x5-cell maze. Commands require cheats/operator permissions.
+
+The three dimensions are logical maze cells in `width height depth` order, not final block dimensions. With the default corridor spacing, `W H D` renders as `(2W+1) × (3H) × (2D+1)` blocks. The entrance is placed at the player's current Y and additional levels build downward, so a 100x125x125-cell maze is 201x375x251 blocks and descends 373 blocks below the entrance. There is no separate two-million-cell command cap; generation is limited only when the expanded render would exceed the in-memory renderer's safety ceiling or Minecraft's coordinate limits.
+
 #### Available Rooms
 - `east_cactus_alley_room` — Purple Brinstar
 - `crab_maze` — Green Brinstar
@@ -65,7 +77,7 @@ The Antfarm includes:
 
 ## Requirements
 
-- Minecraft 1.21.x
+- A Minecraft version matching the mod's build configuration (`super_metroid` currently builds against 26.1.2; `antfarm` targets 1.21.x)
 - Fabric Loader 0.16+
 - Fabric API
 - Fabric Language Kotlin
@@ -75,6 +87,31 @@ The Antfarm includes:
 1. Install Fabric Loader for Minecraft 1.21.x
 2. Copy mod jars and `fabric-language-kotlin.jar` to your mods folder
 3. Launch Minecraft with the Fabric profile
+
+### Modrinth App profile
+
+Modrinth profiles use their own `mods/` folders. Installing a jar in this repository's top-level `mods/` folder only installs it for the local Fabric server; it does not install it in Modrinth or in an individual world save.
+
+The current development profile is:
+
+```text
+/Users/kenny/Library/Application Support/ModrinthApp/profiles/Ken_s Dev Land/
+```
+
+To rebuild and install the Super Metroid/Maze3D mod in that profile:
+
+```bash
+cd /Users/kenny/Kentroid/Minecraft/mods/super_metroid
+./gradlew build
+cp build/libs/super-metroid-mod-1.0.0.jar \
+  "/Users/kenny/Library/Application Support/ModrinthApp/profiles/Ken_s Dev Land/mods/"
+```
+
+The profile must also have compatible versions of Fabric API and Fabric Language Kotlin. Install both from the Modrinth app's **Content** page. Maze3D is included in `super-metroid-mod-1.0.0.jar`; there is no separate Maze3D jar.
+
+The `Ken_s Dev Land` profile currently runs Minecraft 26.2, while the mod's Gradle build targets 26.1.2. Its manifest permits loading on newer Minecraft versions, but smoke-test it after Minecraft updates and update the versions in `mods/super_metroid/build.gradle` if Minecraft reports an incompatibility.
+
+Fully quit Minecraft before replacing a jar, then relaunch the `Ken_s Dev Land` profile. Custom command mods do not necessarily appear in Minecraft's menus; verify this one with `/maze3d 5 3 5` in a cheats-enabled world and check `logs/latest.log` for `Super Metroid Rooms loaded!` if needed.
 
 ## Building from Source
 

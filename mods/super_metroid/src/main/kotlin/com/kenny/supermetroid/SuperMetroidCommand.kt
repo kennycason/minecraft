@@ -20,6 +20,7 @@ object SuperMetroidCommand {
 
     // Tile-based rooms loaded from JSON (roomId -> display name)
     private val TILE_ROOMS = mapOf(
+        "91F8" to "Landing Site",
         "92FD" to "Parlor and Alcatraz"
     )
 

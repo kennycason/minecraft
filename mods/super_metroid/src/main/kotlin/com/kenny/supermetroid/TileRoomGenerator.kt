@@ -3,6 +3,7 @@ package com.kenny.supermetroid
 import com.google.gson.JsonParser
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.core.BlockPos
 import java.io.InputStreamReader
@@ -53,24 +54,27 @@ class TileRoomGenerator(
         val layer1Size = (levelData[0].toInt() and 0xFF) or ((levelData[1].toInt() and 0xFF) shl 8)
         val layer1Tiles = parseTiles(levelData, 2, tilesX * tilesY)
 
-        // Layer 2
-        val layer2Offset = 2 + layer1Size
+        // BTS (Block Type Subdata) sits between L1 and L2: 1 byte per tile
+        val btsOffset = 2 + layer1Size
+        val layer2Offset = btsOffset + tilesX * tilesY
+
         val hasLayer2 = layer2Offset + 2 < levelData.size &&
                 ((levelData[layer2Offset].toInt() and 0xFF) or ((levelData[layer2Offset + 1].toInt() and 0xFF) shl 8)) > 0
         val layer2Tiles = if (hasLayer2) {
-            parseTiles(levelData, layer2Offset + 2, tilesX * tilesY)
+            parseTiles(levelData, layer2Offset, tilesX * tilesY)
         } else null
 
         var solidCount = 0
         var airCount = 0
 
         // Clear area
+        val airState = Blocks.AIR.defaultBlockState()
         for (x in 0 until tilesX) {
             for (y in 0 until tilesY) {
                 val worldX = origin.x + x
                 val worldY = origin.y + (tilesY - 1 - y)
                 for (z in 0..ROOM_DEPTH + 1) {
-                    setBlock(BlockPos(worldX, worldY, origin.z + z), Blocks.AIR)
+                    setBlock(BlockPos(worldX, worldY, origin.z + z), airState)
                 }
             }
         }
@@ -85,24 +89,26 @@ class TileRoomGenerator(
 
                 // Glass front + barrier
                 if (showGlass) {
-                    setBlock(BlockPos(worldX, worldY, origin.z), Blocks.GLASS)
-                    setBlock(BlockPos(worldX, worldY, origin.z - 1), Blocks.BARRIER)
+                    setBlock(BlockPos(worldX, worldY, origin.z), Blocks.GLASS.defaultBlockState())
+                    setBlock(BlockPos(worldX, worldY, origin.z - 1), Blocks.BARRIER.defaultBlockState())
                 }
 
                 // Background wall
                 val bgTile = if (layer2Tiles != null) layer2Tiles[idx] else tile
                 val bgBlock = SmTileBlocks.getBlock(bgTile.metatileIdx)
                 if (bgBlock != null && !bgTile.isEmpty) {
-                    setBlock(BlockPos(worldX, worldY, origin.z + ROOM_DEPTH + 1), bgBlock)
+                    setBlock(BlockPos(worldX, worldY, origin.z + ROOM_DEPTH + 1),
+                        tileState(bgBlock, bgTile))
                 } else {
-                    setBlock(BlockPos(worldX, worldY, origin.z + ROOM_DEPTH + 1), Blocks.BLACK_CONCRETE)
+                    setBlock(BlockPos(worldX, worldY, origin.z + ROOM_DEPTH + 1), Blocks.BLACK_CONCRETE.defaultBlockState())
                 }
 
                 // Foreground solid tiles
                 if (tile.isSolid) {
-                    val block = SmTileBlocks.getBlock(tile.metatileIdx) ?: Blocks.STONE
+                    val block = SmTileBlocks.getBlock(tile.metatileIdx)
+                    val state = if (block != null) tileState(block, tile) else Blocks.STONE.defaultBlockState()
                     for (z in 1..ROOM_DEPTH) {
-                        setBlock(BlockPos(worldX, worldY, origin.z + z), block)
+                        setBlock(BlockPos(worldX, worldY, origin.z + z), state)
                     }
                     solidCount++
                 } else {
@@ -112,18 +118,19 @@ class TileRoomGenerator(
         }
 
         // Bedrock frame
+        val bedrockState = Blocks.BEDROCK.defaultBlockState()
         for (x in 0 until tilesX) {
             val worldX = origin.x + x
             for (z in 0..ROOM_DEPTH + 1) {
-                setBlock(BlockPos(worldX, origin.y - 1, origin.z + z), Blocks.BEDROCK)
-                setBlock(BlockPos(worldX, origin.y + tilesY, origin.z + z), Blocks.BEDROCK)
+                setBlock(BlockPos(worldX, origin.y - 1, origin.z + z), bedrockState)
+                setBlock(BlockPos(worldX, origin.y + tilesY, origin.z + z), bedrockState)
             }
         }
         for (y in -1..tilesY) {
             val worldY = origin.y + y
             for (z in 0..ROOM_DEPTH + 1) {
-                setBlock(BlockPos(origin.x - 1, worldY, origin.z + z), Blocks.BEDROCK)
-                setBlock(BlockPos(origin.x + tilesX, worldY, origin.z + z), Blocks.BEDROCK)
+                setBlock(BlockPos(origin.x - 1, worldY, origin.z + z), bedrockState)
+                setBlock(BlockPos(origin.x + tilesX, worldY, origin.z + z), bedrockState)
             }
         }
 
@@ -152,6 +159,7 @@ class TileRoomGenerator(
     private fun loadJson(roomId: String): InputStreamReader {
         val path = "/assets/super_metroid/roomdata/"
         val knownFiles = listOf(
+            "Landing_Site_91F8.json",
             "Parlor_and_Alcatraz_92FD.json"
         )
         for (file in knownFiles) {
@@ -165,7 +173,17 @@ class TileRoomGenerator(
         return InputStreamReader(stream)
     }
 
-    private fun setBlock(pos: BlockPos, block: Block) {
-        world.setBlock(pos, block.defaultBlockState(), 2)
+    private fun tileState(block: Block, tile: TileEntry): BlockState {
+        val state = block.defaultBlockState()
+        if (block is SmTileBlock) {
+            return state
+                .setValue(SmTileBlock.HFLIP, tile.hFlip)
+                .setValue(SmTileBlock.VFLIP, tile.vFlip)
+        }
+        return state
+    }
+
+    private fun setBlock(pos: BlockPos, state: BlockState) {
+        world.setBlock(pos, state, 2)
     }
 }

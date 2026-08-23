@@ -18,10 +18,13 @@ object SmTileBlocks {
     private val tileBlocks = arrayOfNulls<Block>(MAX_TILES)
 
     private val KNOWN_TILES = intArrayOf(
-        12, 28, 29, 44, 64, 66, 67, 96, 98, 99,
-        255, 256, 257, 258, 259, 260, 267, 268, 269, 270, 271, 272, 273,
-        276, 280, 282, 283, 284, 288, 289, 290, 291, 292,
-        298, 299, 302, 303, 304,
+        12, 28, 29, 44, 64, 66, 67, 69, 70, 71, 72, 73, 86, 88, 89, 91, 95,
+        96, 98, 99, 100, 101, 102, 114, 122, 123, 125, 126, 127,
+        155, 156, 157, 158, 163, 164, 182, 183, 188, 189, 190, 194, 195, 196,
+        255, 256, 257, 258, 259, 260, 266, 267, 268, 269, 270, 271, 272, 273, 274,
+        276, 278, 279, 280, 281, 282, 283, 284, 288, 289, 290, 291, 292,
+        297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 308, 310, 311, 312, 313, 314,
+        372, 375,
         696, 697, 728, 782, 783, 784, 814, 815, 822, 823, 824, 825, 1023
     )
 
@@ -35,7 +38,7 @@ object SmTileBlocks {
                 .strength(2.0f, 6.0f)
                 .setId(blockKey)
 
-            val block = Block(props)
+            val block = SmTileBlock(props)
             Registry.register(BuiltInRegistries.BLOCK, blockKey, block)
 
             val itemProps = Item.Properties().setId(itemKey)

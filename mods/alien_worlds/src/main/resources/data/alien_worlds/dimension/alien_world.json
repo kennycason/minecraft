@@ -1,0 +1,10 @@
+{
+  "type": "alien_worlds:alien_world_type",
+  "generator": {
+    "type": "alien_worlds:alien_chunk_generator",
+    "biome_source": {
+      "type": "minecraft:fixed",
+      "biome": "minecraft:plains"
+    }
+  }
+}
