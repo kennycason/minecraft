@@ -21,6 +21,9 @@ object SuperMetroidMod : ModInitializer {
 
         ServerTickEvents.END_SERVER_TICK.register(Maze3dBuildQueue::tick)
 
-        logger.info("Super Metroid Rooms loaded! Use /sm create <room_name> or /maze3d <width> <height> <depth>")
+        logger.info(
+            "Super Metroid Rooms loaded! Use /sm create <room_name> or " +
+                "/maze3d <width> <height> <depth> [wall_block] [max_chamber_size] [cycles] [seed]"
+        )
     }
 }

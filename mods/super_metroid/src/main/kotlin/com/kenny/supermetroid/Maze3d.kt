@@ -101,6 +101,7 @@ data class Maze3dOpening(
 class Maze3d internal constructor(
     val dimensions: Maze3dDimensions,
     private val connectionMasks: IntArray,
+    private val climbableConnectionMasks: IntArray,
     val entrance: Maze3dOpening,
     val exit: Maze3dOpening,
     val seed: Long
@@ -108,6 +109,9 @@ class Maze3d internal constructor(
     init {
         require(connectionMasks.size == dimensions.cellCount) {
             "connection mask count does not match maze dimensions"
+        }
+        require(climbableConnectionMasks.size == dimensions.cellCount) {
+            "climbable connection mask count does not match maze dimensions"
         }
         require(dimensions.contains(entrance.cell)) { "entrance cell is outside maze dimensions" }
         require(dimensions.contains(exit.cell)) { "exit cell is outside maze dimensions" }
@@ -130,12 +134,34 @@ class Maze3d internal constructor(
         return Maze3dDirection.entries.filter { mask and it.bit != 0 }
     }
 
+    fun isClimbableConnection(index: Int, direction: Maze3dDirection): Boolean {
+        require(index in climbableConnectionMasks.indices) { "cell index is outside maze dimensions: $index" }
+        return climbableConnectionMasks[index] and direction.bit != 0
+    }
+
     fun connectionCount(): Int {
         var directedCount = 0
         for (mask in connectionMasks) {
             directedCount += Integer.bitCount(mask)
         }
         return directedCount / 2
+    }
+
+    fun cycleCount(): Int = connectionCount() - dimensions.cellCount + 1
+
+    fun branchingCellCount(): Int = connectionMasks.count { Integer.bitCount(it) >= 3 }
+
+    fun unassistedVerticalConnectionCount(): Int {
+        var count = 0
+        for (index in connectionMasks.indices) {
+            if (
+                isOpen(index, Maze3dDirection.DOWN) &&
+                !isClimbableConnection(index, Maze3dDirection.DOWN)
+            ) {
+                count++
+            }
+        }
+        return count
     }
 
     fun reachableCellCountFromStart(): Int {
@@ -165,34 +191,52 @@ class Maze3d internal constructor(
 }
 
 class Maze3dGenerator(
-    private val seed: Long = Random().nextLong()
+    private val seed: Long = Random().nextLong(),
+    private val cycleIntensity: Int = DEFAULT_CYCLE_INTENSITY
 ) {
     private val random = Random(seed)
 
+    init {
+        require(cycleIntensity in MIN_CYCLE_INTENSITY..MAX_CYCLE_INTENSITY) {
+            "cycle intensity must be between $MIN_CYCLE_INTENSITY and $MAX_CYCLE_INTENSITY"
+        }
+    }
+
     fun generate(dimensions: Maze3dDimensions): Maze3d {
         val connections = IntArray(dimensions.cellCount)
+        val climbableConnections = IntArray(dimensions.cellCount)
         val visited = BooleanArray(dimensions.cellCount)
-        val stack = IntArray(dimensions.cellCount)
+        val active = IntArray(dimensions.cellCount)
 
         val start = dimensions.indexOf(0, 0, 0)
-        var stackSize = 1
-        stack[0] = start
+        var activeSize = 1
+        active[0] = start
         visited[start] = true
 
         val candidates = IntArray(Maze3dDirection.entries.size)
-        while (stackSize > 0) {
-            val current = stack[stackSize - 1]
-            var candidateCount = 0
+        var candidateCount = collectUnvisitedDirections(dimensions, start, visited, candidates)
+        shuffle(candidates, candidateCount)
+        for (candidateIndex in 0 until minOf(INITIAL_BRANCH_COUNT, candidateCount)) {
+            val direction = Maze3dDirection.entries[candidates[candidateIndex]]
+            val neighbor = dimensions.neighborIndex(start, direction)
+                ?: error("initial branch direction had no neighbor")
+            connect(start, neighbor, direction, connections, climbableConnections, climbable = true)
+            visited[neighbor] = true
+            active[activeSize++] = neighbor
+        }
 
-            for (direction in Maze3dDirection.entries) {
-                val neighbor = dimensions.neighborIndex(current, direction) ?: continue
-                if (!visited[neighbor]) {
-                    candidates[candidateCount++] = direction.ordinal
-                }
+        while (activeSize > 0) {
+            val activeIndex = if (random.nextDouble() < NEWEST_CELL_WEIGHT) {
+                activeSize - 1
+            } else {
+                random.nextInt(activeSize)
             }
+            val current = active[activeIndex]
+            candidateCount = collectUnvisitedDirections(dimensions, current, visited, candidates)
 
             if (candidateCount == 0) {
-                stackSize--
+                activeSize--
+                active[activeIndex] = active[activeSize]
                 continue
             }
 
@@ -200,11 +244,12 @@ class Maze3dGenerator(
             val neighbor = dimensions.neighborIndex(current, direction)
                 ?: error("candidate direction had no neighbor")
 
-            connections[current] = connections[current] or direction.bit
-            connections[neighbor] = connections[neighbor] or direction.opposite.bit
+            connect(current, neighbor, direction, connections, climbableConnections, climbable = true)
             visited[neighbor] = true
-            stack[stackSize++] = neighbor
+            active[activeSize++] = neighbor
         }
+
+        addCycleConnections(dimensions, connections, climbableConnections)
 
         val entrance = Maze3dOpening(Maze3dCell(0, 0, 0), Maze3dDirection.WEST)
         val exitCell = farthestHorizontalBoundaryCell(dimensions, connections, start)
@@ -213,10 +258,80 @@ class Maze3dGenerator(
         return Maze3d(
             dimensions = dimensions,
             connectionMasks = connections,
+            climbableConnectionMasks = climbableConnections,
             entrance = entrance,
             exit = exit,
             seed = seed
         )
+    }
+
+    private fun collectUnvisitedDirections(
+        dimensions: Maze3dDimensions,
+        current: Int,
+        visited: BooleanArray,
+        candidates: IntArray
+    ): Int {
+        var count = 0
+        for (direction in Maze3dDirection.entries) {
+            val neighbor = dimensions.neighborIndex(current, direction) ?: continue
+            if (!visited[neighbor]) {
+                candidates[count++] = direction.ordinal
+            }
+        }
+        return count
+    }
+
+    private fun shuffle(values: IntArray, size: Int) {
+        for (index in size - 1 downTo 1) {
+            val other = random.nextInt(index + 1)
+            val value = values[index]
+            values[index] = values[other]
+            values[other] = value
+        }
+    }
+
+    private fun connect(
+        current: Int,
+        neighbor: Int,
+        direction: Maze3dDirection,
+        connections: IntArray,
+        climbableConnections: IntArray,
+        climbable: Boolean
+    ) {
+        connections[current] = connections[current] or direction.bit
+        connections[neighbor] = connections[neighbor] or direction.opposite.bit
+
+        if (climbable && (direction == Maze3dDirection.UP || direction == Maze3dDirection.DOWN)) {
+            climbableConnections[current] = climbableConnections[current] or direction.bit
+            climbableConnections[neighbor] = climbableConnections[neighbor] or direction.opposite.bit
+        }
+    }
+
+    private fun addCycleConnections(
+        dimensions: Maze3dDimensions,
+        connections: IntArray,
+        climbableConnections: IntArray
+    ) {
+        if (cycleIntensity == 0) return
+        val normalized = cycleIntensity / MAX_CYCLE_INTENSITY.toDouble()
+        val connectionChance = normalized * normalized
+        val positiveDirections = arrayOf(
+            Maze3dDirection.EAST,
+            Maze3dDirection.SOUTH,
+            Maze3dDirection.DOWN
+        )
+
+        for (current in connections.indices) {
+            for (direction in positiveDirections) {
+                val neighbor = dimensions.neighborIndex(current, direction) ?: continue
+                if (connections[current] and direction.bit != 0) continue
+                if (random.nextDouble() > connectionChance) continue
+
+                val climbable = direction != Maze3dDirection.DOWN ||
+                    random.nextDouble() < EXTRA_VERTICAL_CLIMBABLE_CHANCE
+                connect(current, neighbor, direction, connections, climbableConnections, climbable)
+            }
+        }
     }
 
     private fun farthestHorizontalBoundaryCell(
@@ -267,4 +382,13 @@ class Maze3dGenerator(
             cell.x == 0 -> Maze3dDirection.WEST
             else -> Maze3dDirection.EAST
         }
+
+    companion object {
+        const val DEFAULT_CYCLE_INTENSITY = 0
+        const val MIN_CYCLE_INTENSITY = 0
+        const val MAX_CYCLE_INTENSITY = 10
+        private const val INITIAL_BRANCH_COUNT = 3
+        private const val NEWEST_CELL_WEIGHT = 0.15
+        private const val EXTRA_VERTICAL_CLIMBABLE_CHANCE = 0.6
+    }
 }

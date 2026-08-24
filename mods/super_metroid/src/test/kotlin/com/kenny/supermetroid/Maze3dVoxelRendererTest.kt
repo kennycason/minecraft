@@ -11,11 +11,11 @@ class Maze3dVoxelRendererTest {
         val plan = Maze3dVoxelRenderer().render(maze)
 
         assertEquals(7, plan.blockWidth)
-        assertEquals(6, plan.blockHeight)
+        assertEquals(7, plan.blockHeight)
         assertEquals(9, plan.blockDepth)
         assertEquals(-4, plan.minRelativeY)
-        assertEquals(1, plan.maxRelativeY)
-        assertEquals(7 * 6 * 9, plan.volume)
+        assertEquals(2, plan.maxRelativeY)
+        assertEquals(7 * 7 * 9, plan.volume)
     }
 
     @Test
@@ -23,11 +23,11 @@ class Maze3dVoxelRendererTest {
         val rendered = Maze3dVoxelRenderer().measure(Maze3dDimensions(width = 100, height = 125, depth = 125))
 
         assertEquals(201, rendered.width)
-        assertEquals(375, rendered.height)
+        assertEquals(376, rendered.height)
         assertEquals(251, rendered.depth)
         assertEquals(-373, rendered.minRelativeY)
-        assertEquals(1, rendered.maxRelativeY)
-        assertEquals(18_919_125, rendered.volume)
+        assertEquals(2, rendered.maxRelativeY)
+        assertEquals(18_969_576, rendered.volume)
     }
 
     @Test
@@ -36,7 +36,7 @@ class Maze3dVoxelRendererTest {
         val rendered = Maze3dVoxelRenderer().measure(dimensions)
 
         assertEquals(2_015_625, dimensions.cellCount)
-        assertEquals(24_378_375, rendered.volume)
+        assertEquals(24_443_384, rendered.volume)
     }
 
     @Test
@@ -74,6 +74,87 @@ class Maze3dVoxelRendererTest {
 
         for (relativeY in -3..1) {
             assertEquals(Maze3dVoxel.CLIMBABLE, plan.voxelAt(1, relativeY, 1))
+        }
+    }
+
+    @Test
+    fun `unassisted vertical cycle connections render as open shafts`() {
+        val dimensions = Maze3dDimensions(width = 8, height = 4, depth = 8)
+        val maze = Maze3dGenerator(seed = 97531L, cycleIntensity = 10).generate(dimensions)
+        val plan = Maze3dVoxelRenderer().render(maze)
+        val upperIndex = (0 until dimensions.cellCount).first {
+            maze.isOpen(it, Maze3dDirection.DOWN) &&
+                !maze.isClimbableConnection(it, Maze3dDirection.DOWN)
+        }
+        val upper = dimensions.cellAt(upperIndex)
+        val localX = upper.x * 2 + 1
+        val localZ = upper.z * 2 + 1
+        val upperFootY = -(upper.y * Maze3dVoxelRenderer.DEFAULT_LEVEL_STRIDE)
+
+        assertEquals(Maze3dVoxel.AIR, plan.voxelAt(localX, upperFootY - 1, localZ))
+    }
+
+    @Test
+    fun `max chamber size expands cell slots while corridors keep a walkable center`() {
+        val dimensions = Maze3dDimensions(width = 3, height = 2, depth = 4)
+        val maze = Maze3dGenerator(seed = 2026L).generate(dimensions)
+        val renderer = Maze3dVoxelRenderer(maxChamberSize = 5)
+        val rendered = renderer.measure(dimensions)
+        val plan = renderer.render(maze)
+
+        assertEquals(19, rendered.width)
+        assertEquals(13, rendered.height)
+        assertEquals(25, rendered.depth)
+        assertEquals(-7, rendered.minRelativeY)
+        assertEquals(5, rendered.maxRelativeY)
+
+        for (y in 0 until dimensions.height) {
+            for (z in 0 until dimensions.depth) {
+                for (x in 0 until dimensions.width) {
+                    val anchorX = x * 6 + 3
+                    val anchorZ = z * 6 + 3
+                    val footY = -(y * 6)
+                    assertTrue(plan.voxelAt(anchorX, footY, anchorZ) != Maze3dVoxel.WALL)
+                    assertTrue(plan.voxelAt(anchorX, footY + 1, anchorZ) != Maze3dVoxel.WALL)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `renderer gives every maze a solid top ceiling`() {
+        val maze = Maze3dGenerator(seed = 77L).generate(Maze3dDimensions(width = 4, height = 2, depth = 4))
+        val plan = Maze3dVoxelRenderer(maxChamberSize = 5).render(maze)
+
+        for (z in 0 until plan.blockDepth) {
+            for (x in 0 until plan.blockWidth) {
+                assertEquals(Maze3dVoxel.WALL, plan.voxelAt(x, plan.maxRelativeY, z))
+            }
+        }
+    }
+
+    @Test
+    fun `large chambers receive deterministic treasure chests with headroom`() {
+        val dimensions = Maze3dDimensions(width = 8, height = 2, depth = 8)
+        val maze = Maze3dGenerator(seed = 12345L).generate(dimensions)
+        val renderer = Maze3dVoxelRenderer(maxChamberSize = 5)
+        val first = renderer.render(maze)
+        val second = renderer.render(maze)
+
+        assertTrue(first.treasureChestCount > 0)
+        assertEquals(first.treasureChestCount, second.treasureChestCount)
+        for (index in 0 until first.volume) {
+            assertEquals(first.voxelAtIndex(index), second.voxelAtIndex(index))
+            if (first.voxelAtIndex(index) == Maze3dVoxel.TREASURE_CHEST) {
+                assertEquals(
+                    Maze3dVoxel.AIR,
+                    first.voxelAt(
+                        first.localXAtIndex(index),
+                        first.relativeYAtIndex(index) + 1,
+                        first.localZAtIndex(index)
+                    )
+                )
+            }
         }
     }
 

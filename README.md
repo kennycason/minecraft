@@ -18,13 +18,19 @@ The same mod jar also includes the 3D maze generator:
 
 ```text
 /maze3d <width> <height> <depth>
-/maze3d <width> <height> <depth> <wall_block> [seed]
+/maze3d <width> <height> <depth> <wall_block> [max_chamber_size] [cycles] [seed]
 /maze3d status
 ```
 
-For example, `/maze3d 5 3 5 obsidian 12345` creates a reproducible 5x3x5-cell maze. Commands require cheats/operator permissions.
+For example, `/maze3d 8 4 8 glass 5 6 12345` creates a reproducible 8x4x8-cell maze whose chambers vary up to 5x5x5 blocks, with cycle intensity 6. Commands require cheats/operator permissions. The wall argument accepts any registered non-air block; command suggestions include glass, tinted/stained glass, stone, metal, obsidian, and deepslate variants.
 
-The three dimensions are logical maze cells in `width height depth` order, not final block dimensions. With the default corridor spacing, `W H D` renders as `(2W+1) × (3H) × (2D+1)` blocks. The entrance is placed at the player's current Y and additional levels build downward, so a 100x125x125-cell maze is 201x375x251 blocks and descends 373 blocks below the entrance. There is no separate two-million-cell command cap; generation is limited only when the expanded render would exceed the in-memory renderer's safety ceiling or Minecraft's coordinate limits.
+The three dimensions are logical maze cells in `width height depth` order, not final block dimensions. Corridors remain one block wide and two blocks tall. `max_chamber_size` defaults to `1`; larger values give every logical cell a deterministic, seed-driven chamber ranging from a tiny junction up to that size. Chamber height is always at least two blocks. The topology remains a connected perfect 3D maze even though its rooms vary in size.
+
+For a max chamber size `S`, horizontal cells use a stride of `S+1` blocks and vertical cells use `max(2,S)+1`. The extra block separates neighboring chamber slots, and the overall volume includes a solid outer shell and top ceiling. With the default `S=1`, `W H D` renders as `(2W+1) × (3H+1) × (2D+1)` blocks. The entrance is placed at the player's current Y and additional levels build downward, so a default 100x125x125-cell maze is 201x376x251 blocks and descends 373 blocks below the entrance.
+
+Eligible larger chambers receive seed-deterministic treasure chests containing navigation and climbing supplies such as torches, ladders, scaffolding, leads, food, and occasional bonus items. There is no separate two-million-cell command cap; generation is limited only when the expanded render would exceed the in-memory renderer's safety ceiling or Minecraft's coordinate limits. Increasing `max_chamber_size` can expand the final block volume quickly, so check the volume reported by the command.
+
+`cycles` is an intensity from `0` through `10` and defaults to `0`. At `0`, the generator creates a branchier perfect maze with no loops and deliberately fans the entrance into as many as three routes. Higher values progressively open extra connections between neighboring chambers; `10` opens every possible neighboring connection. Extra horizontal connections are ordinary openings. Extra vertical connections are deliberately mixed: some receive scaffolding elevators and some remain open drop shafts, while the original spanning-tree shafts stay climbable so every chamber remains reachable. To provide a seed, include both preceding optional values—for example, use `... obsidian 5 0 12345` for max-size-5 chambers, no cycles, and seed 12345.
 
 #### Available Rooms
 - `east_cactus_alley_room` — Purple Brinstar

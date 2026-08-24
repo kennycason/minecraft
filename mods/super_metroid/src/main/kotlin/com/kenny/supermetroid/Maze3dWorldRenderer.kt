@@ -3,10 +3,14 @@ package com.kenny.supermetroid
 import net.minecraft.core.BlockPos
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.entity.ChestBlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import org.slf4j.LoggerFactory
+import java.util.Random
 
 data class Maze3dWorldBounds(
     val minX: Int,
@@ -26,7 +30,8 @@ data class Maze3dBuildSummary(
     val totalBlocks: Int,
     val wallCount: Int,
     val airCount: Int,
-    val climbableCount: Int
+    val climbableCount: Int,
+    val treasureChestCount: Int
 )
 
 class Maze3dWorldRenderer(
@@ -86,6 +91,7 @@ class Maze3dBuildJob internal constructor(
     private val onComplete: ((Maze3dBuildSummary) -> Unit)?
 ) {
     private var cursor = 0
+    private val lootRandom = Random(plan.lootSeed)
 
     val totalBlocks: Int get() = plan.volume
     val placedBlocks: Int get() = cursor
@@ -100,14 +106,19 @@ class Maze3dBuildJob internal constructor(
             val relativeY = plan.relativeYAtIndex(cursor)
             val localZ = plan.localZAtIndex(cursor)
 
-            val state = when (plan.voxelAtIndex(cursor)) {
+            val voxel = plan.voxelAtIndex(cursor)
+            val state = when (voxel) {
                 Maze3dVoxel.WALL -> wallState
                 Maze3dVoxel.AIR -> Blocks.AIR.defaultBlockState()
                 Maze3dVoxel.CLIMBABLE -> climbableState
+                Maze3dVoxel.TREASURE_CHEST -> Blocks.CHEST.defaultBlockState()
             }
 
             mutablePos.set(origin.x + localX, origin.y + relativeY, origin.z + localZ)
             world.setBlock(mutablePos, state, BLOCK_UPDATE_FLAGS)
+            if (voxel == Maze3dVoxel.TREASURE_CHEST) {
+                populateTreasureChest(mutablePos)
+            }
             cursor++
             processed++
         }
@@ -125,8 +136,44 @@ class Maze3dBuildJob internal constructor(
             totalBlocks = totalBlocks,
             wallCount = plan.wallCount,
             airCount = plan.airCount,
-            climbableCount = plan.climbableCount
+            climbableCount = plan.climbableCount,
+            treasureChestCount = plan.treasureChestCount
         )
+
+    private fun populateTreasureChest(pos: BlockPos) {
+        val chest = world.getBlockEntity(pos) as? ChestBlockEntity ?: return
+        val supplies = mutableListOf(
+            ItemStack(Items.TORCH, 8 + lootRandom.nextInt(17)),
+            ItemStack(Items.LADDER, 4 + lootRandom.nextInt(13)),
+            ItemStack(Items.SCAFFOLDING, 4 + lootRandom.nextInt(13)),
+            ItemStack(Items.LEAD, 1 + lootRandom.nextInt(3)),
+            ItemStack(Items.BREAD, 2 + lootRandom.nextInt(5))
+        )
+        if (lootRandom.nextDouble() < 0.45) {
+            supplies.add(ItemStack(Items.COMPASS))
+        }
+        if (lootRandom.nextDouble() < 0.25) {
+            supplies.add(ItemStack(Items.ENDER_PEARL, 1 + lootRandom.nextInt(3)))
+        }
+        if (lootRandom.nextDouble() < 0.10) {
+            supplies.add(ItemStack(Items.GOLDEN_APPLE))
+        }
+
+        val slots = (0 until chest.containerSize).toMutableList()
+        shuffle(slots, lootRandom)
+        chest.clearContent()
+        supplies.forEachIndexed { index, stack -> chest.setItem(slots[index], stack) }
+        chest.setChanged()
+    }
+
+    private fun <T> shuffle(values: MutableList<T>, random: Random) {
+        for (index in values.lastIndex downTo 1) {
+            val other = random.nextInt(index + 1)
+            val value = values[index]
+            values[index] = values[other]
+            values[other] = value
+        }
+    }
 
     companion object {
         private const val BLOCK_UPDATE_FLAGS = 2
@@ -153,7 +200,8 @@ object Maze3dBuildQueue {
                 val summary = job.summary()
                 logger.info(
                     "Finished 3D maze build: ${summary.totalBlocks} blocks, " +
-                        "${summary.bounds.width}x${summary.bounds.height}x${summary.bounds.depth} volume"
+                        "${summary.bounds.width}x${summary.bounds.height}x${summary.bounds.depth} volume, " +
+                        "${summary.treasureChestCount} treasure chests"
                 )
                 jobs.removeFirst()
             } else {

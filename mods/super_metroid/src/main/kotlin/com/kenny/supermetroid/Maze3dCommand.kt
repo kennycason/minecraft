@@ -3,7 +3,6 @@ package com.kenny.supermetroid
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.brigadier.arguments.LongArgumentType
-import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
 import com.mojang.brigadier.suggestion.Suggestions
 import com.mojang.brigadier.suggestion.SuggestionsBuilder
@@ -11,6 +10,7 @@ import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.commands.Commands.argument
 import net.minecraft.commands.Commands.literal
+import net.minecraft.commands.arguments.IdentifierArgument
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
@@ -29,7 +29,16 @@ object Maze3dCommand {
         "minecraft:obsidian",
         "minecraft:crying_obsidian",
         "minecraft:deepslate_bricks",
-        "minecraft:blackstone"
+        "minecraft:blackstone",
+        "minecraft:glass",
+        "minecraft:tinted_glass",
+        "minecraft:white_stained_glass",
+        "minecraft:cyan_stained_glass",
+        "minecraft:red_stained_glass",
+        "minecraft:iron_block",
+        "minecraft:copper_block",
+        "minecraft:stone_bricks",
+        "minecraft:deepslate_tiles"
     )
 
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
@@ -46,20 +55,60 @@ object Maze3dCommand {
                             argument("height", IntegerArgumentType.integer(1))
                                 .then(
                                     argument("depth", IntegerArgumentType.integer(1))
-                                        .executes { executeGenerate(it, null, null) }
+                                        .executes { executeGenerate(it, null, null, null, null) }
                                         .then(
-                                            argument("wall_block", StringArgumentType.word())
+                                            argument("wall_block", IdentifierArgument.id())
                                                 .suggests(::suggestWallBlocks)
-                                                .executes { executeGenerate(it, StringArgumentType.getString(it, "wall_block"), null) }
+                                                .executes {
+                                                    executeGenerate(
+                                                        it,
+                                                        IdentifierArgument.getId(it, "wall_block"),
+                                                        null,
+                                                        null,
+                                                        null
+                                                    )
+                                                }
                                                 .then(
-                                                    argument("seed", LongArgumentType.longArg())
+                                                    argument("max_chamber_size", IntegerArgumentType.integer(1))
                                                         .executes {
                                                             executeGenerate(
                                                                 it,
-                                                                StringArgumentType.getString(it, "wall_block"),
-                                                                LongArgumentType.getLong(it, "seed")
+                                                                IdentifierArgument.getId(it, "wall_block"),
+                                                                IntegerArgumentType.getInteger(it, "max_chamber_size"),
+                                                                null,
+                                                                null
                                                             )
                                                         }
+                                                        .then(
+                                                            argument(
+                                                                "cycles",
+                                                                IntegerArgumentType.integer(
+                                                                    Maze3dGenerator.MIN_CYCLE_INTENSITY,
+                                                                    Maze3dGenerator.MAX_CYCLE_INTENSITY
+                                                                )
+                                                            )
+                                                                .executes {
+                                                                    executeGenerate(
+                                                                        it,
+                                                                        IdentifierArgument.getId(it, "wall_block"),
+                                                                        IntegerArgumentType.getInteger(it, "max_chamber_size"),
+                                                                        IntegerArgumentType.getInteger(it, "cycles"),
+                                                                        null
+                                                                    )
+                                                                }
+                                                                .then(
+                                                                    argument("seed", LongArgumentType.longArg())
+                                                                        .executes {
+                                                                            executeGenerate(
+                                                                                it,
+                                                                                IdentifierArgument.getId(it, "wall_block"),
+                                                                                IntegerArgumentType.getInteger(it, "max_chamber_size"),
+                                                                                IntegerArgumentType.getInteger(it, "cycles"),
+                                                                                LongArgumentType.getLong(it, "seed")
+                                                                            )
+                                                                        }
+                                                                )
+                                                        )
                                                 )
                                         )
                                 )
@@ -77,7 +126,9 @@ object Maze3dCommand {
 
     private fun executeGenerate(
         context: CommandContext<CommandSourceStack>,
-        wallBlockArg: String?,
+        wallBlockArg: Identifier?,
+        maxChamberSizeArg: Int?,
+        cycleIntensityArg: Int?,
         seedArg: Long?
     ): Int {
         val source = context.source
@@ -89,13 +140,15 @@ object Maze3dCommand {
         )
 
         val wallBlock = try {
-            parseWallBlock(wallBlockArg ?: DEFAULT_WALL_BLOCK_ID)
+            parseWallBlock(wallBlockArg ?: Identifier.parse(DEFAULT_WALL_BLOCK_ID))
         } catch (e: IllegalArgumentException) {
             source.sendFailure(Component.literal(e.message ?: "Invalid wall block."))
             return 0
         }
 
-        val voxelRenderer = Maze3dVoxelRenderer()
+        val maxChamberSize = maxChamberSizeArg ?: Maze3dVoxelRenderer.DEFAULT_MAX_CHAMBER_SIZE
+        val cycleIntensity = cycleIntensityArg ?: Maze3dGenerator.DEFAULT_CYCLE_INTENSITY
+        val voxelRenderer = Maze3dVoxelRenderer(maxChamberSize)
         try {
             voxelRenderer.measure(dimensions)
         } catch (e: IllegalArgumentException) {
@@ -104,7 +157,7 @@ object Maze3dCommand {
         }
 
         val seed = seedArg ?: Random().nextLong()
-        val maze = Maze3dGenerator(seed).generate(dimensions)
+        val maze = Maze3dGenerator(seed, cycleIntensity).generate(dimensions)
         val plan = try {
             voxelRenderer.render(maze)
         } catch (e: IllegalArgumentException) {
@@ -119,7 +172,8 @@ object Maze3dCommand {
                 source.sendSuccess({
                     Component.literal(
                         "3D maze complete: ${summary.bounds.width}x${summary.bounds.height}x${summary.bounds.depth} " +
-                            "blocks, ${summary.totalBlocks} positions written."
+                            "blocks, ${summary.totalBlocks} positions written, " +
+                            "${summary.treasureChestCount} treasure chests, ${maze.cycleCount()} cycles."
                     )
                 }, true)
             }
@@ -137,25 +191,25 @@ object Maze3dCommand {
         source.sendSuccess({
             Component.literal(
                 "Queued 3D maze ${dimensions.width}x${dimensions.height}x${dimensions.depth} cells " +
-                    "using ${BuiltInRegistries.BLOCK.getKey(wallBlock)}. " +
+                    "using ${BuiltInRegistries.BLOCK.getKey(wallBlock)}, max chamber $maxChamberSize, " +
+                    "cycle intensity $cycleIntensity (${maze.cycleCount()} cycles). " +
                     "Volume ${summary.bounds.width}x${summary.bounds.height}x${summary.bounds.depth}, " +
-                    "${summary.totalBlocks} positions, seed $seed, about ${estimatedSeconds}s."
+                    "${summary.totalBlocks} positions, ${summary.treasureChestCount} treasure chests, " +
+                    "seed $seed, about ${estimatedSeconds}s."
             )
         }, true)
 
         return 1
     }
 
-    private fun parseWallBlock(raw: String): Block {
-        val normalized = if (":" in raw) raw else "minecraft:$raw"
-        val id = Identifier.parse(normalized)
+    private fun parseWallBlock(id: Identifier): Block {
         val block = BuiltInRegistries.BLOCK.getValue(id)
 
         require(block != Blocks.AIR) {
-            "Unknown or unsupported wall block: $normalized"
+            "Unknown or unsupported wall block: $id"
         }
         require(block != Blocks.VOID_AIR && block != Blocks.CAVE_AIR) {
-            "Wall block cannot be air: $normalized"
+            "Wall block cannot be air: $id"
         }
 
         return block
