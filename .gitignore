@@ -1,4 +1,9 @@
 # =====================================
+# Browser Cache (Minecraft launcher embedded browser)
+# =====================================
+webcache2/
+
+# =====================================
 # Minecraft Server Runtime Files
 # =====================================
 world/
