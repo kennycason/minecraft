@@ -19,6 +19,8 @@ class Amoeba(
     val targetPos: BlockPos? = null,
     val loyal: Boolean = true,
     val sneaky: Boolean = false,
+    val aggroRange: Int = DEFAULT_AGGRO_RANGE,
+    val lavaStomach: Boolean = false,
     val customBlock: Block? = null,
     private val seed: Long = Random().nextLong(),
     val name: String = buildName(color, customBlock)
@@ -26,6 +28,7 @@ class Amoeba(
     private val random = Random(seed)
     private val cells = LinkedHashSet<BlockPos>()
     private val edgeCells = LinkedHashSet<BlockPos>()
+    private val stomachCells = LinkedHashSet<BlockPos>()
     private val savedBlocks = HashMap<BlockPos, BlockState>()
     private var age = 0
     private var breathPhase = 0.0
@@ -64,6 +67,7 @@ class Amoeba(
 
         updateCenter()
         refreshEdges()
+        if (lavaStomach) refreshStomach()
     }
 
     fun tick() {
@@ -83,7 +87,7 @@ class Amoeba(
             breathe()
         }
 
-        if (!loyal && age % 3 == 0) {
+        if (age % 2 == 0) {
             huntNearestPlayer()
         }
 
@@ -104,12 +108,14 @@ class Amoeba(
         }
         cells.clear()
         edgeCells.clear()
+        stomachCells.clear()
         savedBlocks.clear()
     }
 
     fun notifyBlockBroken(pos: BlockPos) {
         if (cells.remove(pos)) {
             edgeCells.remove(pos)
+            stomachCells.remove(pos)
             savedBlocks.remove(pos)
             refreshEdges()
             if (cells.isEmpty()) {
@@ -175,6 +181,7 @@ class Amoeba(
 
     private fun isAmoebaBlock(state: BlockState): Boolean {
         val block = state.block
+        if (lavaStomach && block == MAGMA_BLOCK) return true
         if (customBlock != null) return block == customBlock
         if (color.isCamo) return true
         return block == color.bodyBlock || block == color.coreBlock
@@ -186,93 +193,153 @@ class Amoeba(
         val moveCount = speed.coerceAtMost(cells.size / 3).coerceAtLeast(1)
         val moveTarget = currentMoveTarget()
 
-        // Source cells: pick from the REAR (farthest from target) - creates rolling effect
-        val movable = mutableListOf<BlockPos>()
-        for (pos in cells) {
-            if (isEdge(pos)) movable.add(pos)
-        }
-        movable.sortByDescending { it.distSqr(moveTarget) }
-        val toMove = movable.take(moveCount)
+        // Anti-tentacle radius: 1.5x current blob extent
+        val blobRadiusSq = computeBlobRadiusSq()
+        val maxPlaceDistSq = blobRadiusSq * 2.25 + 25.0
+
+        // === SOURCE: edge cells farthest from target ===
+        // Edge-only removal prevents splitting
+        val toMove = edgeCells.filter { !stomachCells.contains(it) }
+            .sortedByDescending { it.distSqr(moveTarget) }
+            .take(moveCount)
 
         if (toMove.isEmpty()) return
 
-        // Destination: growth spots closest to target + downward bias
+        // === DESTINATIONS ===
         val growthSpots = mutableListOf<Pair<BlockPos, Double>>()
         for (edge in edgeCells) {
             for (offset in GROWTH_OFFSETS) {
                 val neighbor = edge.offset(offset[0], offset[1], offset[2])
-                if (!cells.contains(neighbor) && canGrowInto(neighbor)) {
-                    var score = -neighbor.distSqr(moveTarget).toDouble() * 0.01
-                    if (neighbor.y < edge.y) score += 50.0
-                    if (neighbor.y > edge.y) score -= 30.0
-                    growthSpots.add(neighbor to score)
+                if (cells.contains(neighbor) || !canGrowInto(neighbor)) continue
+                if (neighbor.distSqr(centerPos).toDouble() > maxPlaceDistSq) continue
+
+                // Primary: get closer to target (3D)
+                var score = -neighbor.distSqr(moveTarget).toDouble() * 0.01
+
+                // Anti-tentacle: penalize thin protrusions (0-1 neighbors)
+                // but DON'T reward high neighbor counts (that causes squares)
+                var touchCount = 0
+                for (nOffset in GROWTH_OFFSETS) {
+                    if (cells.contains(neighbor.offset(nOffset[0], nOffset[1], nOffset[2]))) {
+                        touchCount++
+                    }
                 }
+                if (touchCount <= 1) score -= 3.0  // discourage thin tips
+
+                // Organic noise: randomize scores slightly for natural blobby shape
+                score += (random.nextDouble() - 0.5) * 4.0
+
+                // Very mild gravity tiebreaker
+                score -= (neighbor.y - centerPos.y).toDouble() * 0.2
+
+                growthSpots.add(neighbor to score)
             }
         }
         if (growthSpots.isEmpty()) return
 
         growthSpots.sortByDescending { it.second }
-        // Deduplicate destinations
         val destinations = growthSpots.map { it.first }.distinct()
-
         val teleportCount = minOf(toMove.size, destinations.size)
 
         for (i in 0 until teleportCount) {
-            val fromPos = toMove[i]
-            val toPos = destinations[i]
-
-            cells.remove(fromPos)
-            edgeCells.remove(fromPos)
-            val saved = savedBlocks.remove(fromPos)
-            if (saved != null) {
-                world.setBlock(fromPos, saved, 2)
-            } else {
-                world.setBlock(fromPos, AIR_STATE, 2)
-            }
-
-            placeCell(toPos, isCore = false)
+            removeCell(toMove[i])
+            placeCell(destinations[i], isCore = false)
         }
 
         updateCenter()
         refreshEdges()
+        if (lavaStomach) refreshStomach()
+    }
+
+    private fun computeBlobRadiusSq(): Double {
+        if (cells.isEmpty()) return 9.0
+        var maxSq = 0.0
+        for (pos in cells) {
+            val d = pos.distSqr(centerPos).toDouble()
+            if (d > maxSq) maxSq = d
+        }
+        return maxSq.coerceAtLeast(9.0)
+    }
+
+    private fun refreshStomach() {
+        if (!lavaStomach || cells.size < 20) return
+
+        val desiredSize = (cells.size * STOMACH_RATIO).toInt().coerceAtLeast(1)
+
+        // Remove stomach cells that are no longer valid (gone or became edge)
+        val invalid = stomachCells.filter { !cells.contains(it) || isEdge(it) }
+        invalid.forEach { pos ->
+            stomachCells.remove(pos)
+            if (cells.contains(pos)) {
+                // Convert back to body block
+                val block = chooseBlock(pos, isCore = false)
+                world.setBlock(pos, block.defaultBlockState(), 2)
+            }
+        }
+
+        // Grow stomach if too small: pick interior cells closest to the move target (or center)
+        if (stomachCells.size < desiredSize) {
+            val target = if (!loyal) findNearestPlayer()?.blockPosition() ?: centerPos else centerPos
+            val interiorCells = cells.filter { !isEdge(it) && !stomachCells.contains(it) }
+                .sortedBy { it.distSqr(target) }
+            val needed = desiredSize - stomachCells.size
+            interiorCells.take(needed).forEach { pos ->
+                stomachCells.add(pos)
+                world.setBlock(pos, MAGMA_BLOCK.defaultBlockState(), 2)
+            }
+        }
+
+        // Shrink stomach if too big
+        if (stomachCells.size > desiredSize) {
+            val excess = stomachCells.size - desiredSize
+            val farthest = stomachCells.sortedByDescending { it.distSqr(centerPos) }
+            farthest.take(excess).forEach { pos ->
+                stomachCells.remove(pos)
+                val block = chooseBlock(pos, isCore = false)
+                world.setBlock(pos, block.defaultBlockState(), 2)
+            }
+        }
     }
 
     private fun currentMoveTarget(): BlockPos {
-        if (!loyal) {
-            val nearest = findNearestPlayer()
-            if (nearest != null) {
-                // Target the player's position directly - don't stop until we're centered on them
-                return nearest.blockPosition()
-            }
+        // Always move toward the nearest player
+        val nearest = findNearestPlayer()
+        if (nearest != null) {
+            // Hostile: target eye level to engulf. Loyal: target feet to follow alongside
+            return if (!loyal) nearest.blockPosition().above() else nearest.blockPosition()
         }
         if (targetPos != null) return targetPos
         return centerPos.offset(
-            random.nextInt(11) - 5,
-            -2,
-            random.nextInt(11) - 5
+            random.nextInt(21) - 10,
+            0,
+            random.nextInt(21) - 10
         )
     }
 
     private fun huntNearestPlayer() {
-        // Hostile mode: always aggressively move toward the player
-        // The fluidMove already handles this via currentMoveTarget()
-        // This method provides EXTRA movement pulses for aggressive pursuit
         val player = findNearestPlayer() ?: return
         val playerPos = player.blockPosition()
-        val dist = centerPos.distSqr(playerPos)
+        val dist = centerPos.distSqr(playerPos).toDouble()
+        val closeRange = (aggroRange * 0.15).let { (it * it).toDouble() }
+        val midRange = (aggroRange * 0.3).let { (it * it).toDouble() }
 
-        // Close range: extra aggressive, move more blocks
-        if (dist < 225) { // within 15 blocks
-            fluidMove()
-            fluidMove()
-        } else if (dist < 900) { // within 30 blocks
-            fluidMove()
+        // Bonus movement toward players - hostile blobs get more
+        fluidMove()
+        if (!loyal) {
+            if (dist < midRange) {
+                fluidMove()
+            }
+            if (dist < closeRange) {
+                fluidMove()
+                fluidMove()
+            }
         }
     }
 
     private fun findNearestPlayer(): ServerPlayer? {
+        val rangeSq = aggroRange.toLong() * aggroRange.toLong()
         return world.players()
-            .filter { it.blockPosition().distSqr(centerPos) < 10000 } // within 100 blocks
+            .filter { it.blockPosition().distSqr(centerPos) < rangeSq }
             .minByOrNull { it.blockPosition().distSqr(centerPos) }
     }
 
@@ -287,14 +354,7 @@ class Amoeba(
             val picked = edgeList.shuffled(kotlin.random.Random(random.nextLong())).take(3)
             picked.forEach { candidate ->
                 if (cells.size <= 6) return
-                cells.remove(candidate)
-                edgeCells.remove(candidate)
-                val saved = savedBlocks.remove(candidate)
-                if (saved != null) {
-                    world.setBlock(candidate, saved, 2)
-                } else {
-                    world.setBlock(candidate, AIR_STATE, 2)
-                }
+                removeCell(candidate)
             }
             refreshEdges()
         }
@@ -323,6 +383,18 @@ class Amoeba(
             (sy / cells.size).toInt(),
             (sz / cells.size).toInt()
         )
+    }
+
+    private fun removeCell(pos: BlockPos) {
+        cells.remove(pos)
+        edgeCells.remove(pos)
+        stomachCells.remove(pos)
+        val saved = savedBlocks.remove(pos)
+        if (saved != null) {
+            world.setBlock(pos, saved, 2)
+        } else {
+            world.setBlock(pos, AIR_STATE, 2)
+        }
     }
 
     private fun placeCell(pos: BlockPos, isCore: Boolean) {
@@ -417,11 +489,17 @@ class Amoeba(
     }
 
     companion object {
-        const val DEFAULT_SPEED = 15
+        const val DEFAULT_SPEED = 40
+        const val DEFAULT_AGGRO_RANGE = 300
         private const val TARGET_REACH_DISTANCE_SQ = 9L
+        private const val STOMACH_RATIO = 0.08
 
         private val AIR_STATE by lazy {
             BuiltInRegistries.BLOCK.getValue(Identifier.parse("minecraft:air")).defaultBlockState()
+        }
+
+        private val MAGMA_BLOCK by lazy {
+            BuiltInRegistries.BLOCK.getValue(Identifier.parse("minecraft:magma_block"))
         }
 
         private val CARDINAL_OFFSETS = arrayOf(

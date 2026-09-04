@@ -28,23 +28,23 @@ object BlockmoebaCommand {
             literal("blockmoeba")
                 .then(
                     literal("spawn")
-                        .executes { executeSpawn(it, null, null, null, null, null) }
+                        .executes { executeSpawn(it, null, null, null, null, null, null, null) }
                         .then(
                             argument("type", StringArgumentType.string())
                                 .suggests(::suggestTypes)
-                                .executes { executeSpawn(it, StringArgumentType.getString(it, "type"), null, null, null, null) }
+                                .executes { executeSpawn(it, StringArgumentType.getString(it, "type"), null, null, null, null, null, null) }
                                 .then(
                                     argument("max_size", IntegerArgumentType.integer(5, 50000))
                                         .executes {
                                             executeSpawn(it, StringArgumentType.getString(it, "type"),
-                                                IntegerArgumentType.getInteger(it, "max_size"), null, null, null)
+                                                IntegerArgumentType.getInteger(it, "max_size"), null, null, null, null, null)
                                         }
                                         .then(
                                             argument("loyal", BoolArgumentType.bool())
                                                 .executes {
                                                     executeSpawn(it, StringArgumentType.getString(it, "type"),
                                                         IntegerArgumentType.getInteger(it, "max_size"),
-                                                        BoolArgumentType.getBool(it, "loyal"), null, null)
+                                                        BoolArgumentType.getBool(it, "loyal"), null, null, null, null)
                                                 }
                                                 .then(
                                                     argument("speed", IntegerArgumentType.integer(1, 500))
@@ -52,7 +52,7 @@ object BlockmoebaCommand {
                                                             executeSpawn(it, StringArgumentType.getString(it, "type"),
                                                                 IntegerArgumentType.getInteger(it, "max_size"),
                                                                 BoolArgumentType.getBool(it, "loyal"),
-                                                                IntegerArgumentType.getInteger(it, "speed"), null)
+                                                                IntegerArgumentType.getInteger(it, "speed"), null, null, null)
                                                         }
                                                         .then(
                                                             argument("sneaky", BoolArgumentType.bool())
@@ -61,8 +61,31 @@ object BlockmoebaCommand {
                                                                         IntegerArgumentType.getInteger(it, "max_size"),
                                                                         BoolArgumentType.getBool(it, "loyal"),
                                                                         IntegerArgumentType.getInteger(it, "speed"),
-                                                                        BoolArgumentType.getBool(it, "sneaky"))
+                                                                        BoolArgumentType.getBool(it, "sneaky"), null, null)
                                                                 }
+                                                                .then(
+                                                                    argument("aggro_range", IntegerArgumentType.integer(10, 1000))
+                                                                        .executes {
+                                                                            executeSpawn(it, StringArgumentType.getString(it, "type"),
+                                                                                IntegerArgumentType.getInteger(it, "max_size"),
+                                                                                BoolArgumentType.getBool(it, "loyal"),
+                                                                                IntegerArgumentType.getInteger(it, "speed"),
+                                                                                BoolArgumentType.getBool(it, "sneaky"),
+                                                                                IntegerArgumentType.getInteger(it, "aggro_range"), null)
+                                                                        }
+                                                                        .then(
+                                                                            argument("lava_stomach", BoolArgumentType.bool())
+                                                                                .executes {
+                                                                                    executeSpawn(it, StringArgumentType.getString(it, "type"),
+                                                                                        IntegerArgumentType.getInteger(it, "max_size"),
+                                                                                        BoolArgumentType.getBool(it, "loyal"),
+                                                                                        IntegerArgumentType.getInteger(it, "speed"),
+                                                                                        BoolArgumentType.getBool(it, "sneaky"),
+                                                                                        IntegerArgumentType.getInteger(it, "aggro_range"),
+                                                                                        BoolArgumentType.getBool(it, "lava_stomach"))
+                                                                                }
+                                                                        )
+                                                                )
                                                         )
                                                 )
                                         )
@@ -113,7 +136,9 @@ object BlockmoebaCommand {
         maxSizeArg: Int?,
         loyalArg: Boolean?,
         speedArg: Int?,
-        sneakyArg: Boolean?
+        sneakyArg: Boolean?,
+        aggroRangeArg: Int?,
+        lavaStomachArg: Boolean?
     ): Int {
         val source = context.source
         val player = source.getPlayerOrException()
@@ -150,6 +175,8 @@ object BlockmoebaCommand {
         val loyal = loyalArg ?: true
         val speed = speedArg ?: Amoeba.DEFAULT_SPEED
         val sneaky = sneakyArg ?: false
+        val aggroRange = aggroRangeArg ?: Amoeba.DEFAULT_AGGRO_RANGE
+        val lavaStomach = lavaStomachArg ?: false
 
         // Raycast to where the player is looking, up to MAX_SPAWN_RANGE blocks
         val pos = raycastSpawnPos(player) ?: run {
@@ -157,11 +184,12 @@ object BlockmoebaCommand {
             return 0
         }
 
-        val amoeba = BlockmoebaSimulation.spawn(world, pos, color, maxSize, loyal, speed, sneaky, customBlock)
+        val amoeba = BlockmoebaSimulation.spawn(world, pos, color, maxSize, loyal, speed, sneaky, aggroRange, lavaStomach, customBlock)
 
         val traits = mutableListOf<String>()
         traits.add(if (loyal) "loyal" else "HOSTILE")
         if (sneaky) traits.add("sneaky")
+        if (lavaStomach) traits.add("lava stomach")
         val traitText = traits.joinToString(", ")
 
         source.sendSuccess({

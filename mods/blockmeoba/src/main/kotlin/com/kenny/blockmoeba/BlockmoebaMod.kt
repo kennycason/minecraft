@@ -26,6 +26,6 @@ object BlockmoebaMod : ModInitializer {
             true
         }
 
-        logger.info("Blockmoeba loaded! Use /blockmoeba spawn [type] [size] [loyal] [speed] [sneaky]")
+        logger.info("Blockmoeba loaded! Use /blockmoeba spawn [type] [size] [loyal] [speed] [sneaky] [aggro_range]")
     }
 }

@@ -21,6 +21,8 @@ object BlockmoebaSimulation {
         loyal: Boolean,
         speed: Int = Amoeba.DEFAULT_SPEED,
         sneaky: Boolean = false,
+        aggroRange: Int = Amoeba.DEFAULT_AGGRO_RANGE,
+        lavaStomach: Boolean = false,
         customBlock: Block? = null
     ): Amoeba {
         val amoeba = Amoeba(
@@ -31,11 +33,13 @@ object BlockmoebaSimulation {
             speed = speed,
             loyal = loyal,
             sneaky = sneaky,
+            aggroRange = aggroRange,
+            lavaStomach = lavaStomach,
             customBlock = customBlock
         )
         amoeba.spawn()
         amoebas.add(amoeba)
-        logger.info("Spawned ${amoeba.name} at $origin (max: $maxSize, speed: $speed, loyal: $loyal, sneaky: $sneaky)")
+        logger.info("Spawned ${amoeba.name} at $origin (max: $maxSize, speed: $speed, loyal: $loyal, sneaky: $sneaky, aggroRange: $aggroRange, lavaStomach: $lavaStomach)")
         return amoeba
     }
 
@@ -115,7 +119,8 @@ object BlockmoebaSimulation {
             amoebas.forEach { a ->
                 val loyalText = if (a.loyal) "loyal" else "hostile"
                 val sneakyText = if (a.sneaky) ", sneaky" else ""
-                lines.add("  ${a.name}: ${a.size}/${a.maxSize} blocks, speed ${a.speed} ($loyalText$sneakyText)")
+                val aggroText = if (!a.loyal) ", aggro ${a.aggroRange}" else ""
+                lines.add("  ${a.name}: ${a.size}/${a.maxSize} blocks, speed ${a.speed} ($loyalText$sneakyText$aggroText)")
             }
         }
         if (races.isNotEmpty()) {
